@@ -1,5 +1,5 @@
 from fastapi import FastAPI, HTTPException, Depends, Request, status, Body
-from fastapi.responses import JSONResponse, FileResponse
+from fastapi.responses import JSONResponse, FileResponse, RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import sqlite3
@@ -359,3 +359,7 @@ def get_profile_image(role: str, id: int, user=Depends(get_current_user)):
     raise HTTPException(status_code=404, detail="Image not found")
 
 # TODO: openapi.yaml 기반 엔드포인트 구현
+
+@app.get("/")
+def root():
+    return RedirectResponse(url="/api/docs")
