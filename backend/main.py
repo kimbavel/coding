@@ -7,6 +7,7 @@ from pydantic import BaseModel, EmailStr
 from passlib.hash import bcrypt
 import jwt
 import os
+import importlib.util
 
 app = FastAPI(openapi_url="/api/openapi.json", docs_url="/api/docs")
 
@@ -23,6 +24,18 @@ security = HTTPBearer()
 
 # DB 연결 함수
 DB_PATH = "./backend/app.db"
+
+def init_db():
+    # init_db.py를 import해서 실행
+    import importlib.util
+    import os
+    db_init_path = os.path.join(os.path.dirname(__file__), "init_db.py")
+    spec = importlib.util.spec_from_file_location("init_db", db_init_path)
+    db_module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(db_module)
+
+init_db()  # 앱 시작 시 DB 초기화
+
 def get_db():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
