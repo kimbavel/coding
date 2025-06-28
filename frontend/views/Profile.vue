@@ -19,7 +19,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, computed } from 'vue';
 import api from '../api';
 import { useRouter } from 'vue-router';
 
@@ -98,7 +98,7 @@ const toBase64 = (file) => new Promise((resolve, reject) => {
 const profileImageUrl = computed(() => {
   if (!user.value) return '';
   if (user.value.profile.imageUrl) {
-    return `/api/images/${user.value.role}/${user.value.id}`;
+    return `http://localhost:8080/api/images/${user.value.role}/${user.value.id}`;
   }
   return user.value.role === 'mentor'
     ? 'https://placehold.co/500x500.jpg?text=MENTOR'

@@ -12,6 +12,7 @@ import uuid
 import time
 from PIL import Image
 import io
+from typing import Optional
 
 app = FastAPI(openapi_url="/api/openapi.json", docs_url="/")
 
@@ -58,9 +59,10 @@ SECRET_KEY = "dev-secret"  # 실제 서비스에서는 환경변수 사용
 
 def decode_jwt(token: str):
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+        payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"], audience="mentor-mentee-client")
         return payload
-    except Exception:
+    except Exception as e:
+        print(e)
         return None
 
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
@@ -150,7 +152,7 @@ def get_me(user=Depends(get_current_user)):
     if u[3] == "mentor":
         c.execute("SELECT bio, image_url, skills FROM mentor_profiles WHERE user_id = ?", (u[0],))
         p = c.fetchone()
-        image_url = p[1] if p and p[1] else "https://placehold.co/500x500.jpg?text=MENTOR"
+        image_url = p[1] if p and p[1] else None
         profile = {
             "name": u[2],
             "bio": p[0] if p else "",
@@ -162,7 +164,7 @@ def get_me(user=Depends(get_current_user)):
     else:
         c.execute("SELECT bio, image_url FROM mentee_profiles WHERE user_id = ?", (u[0],))
         p = c.fetchone()
-        image_url = p[1] if p and p[1] else "https://placehold.co/500x500.jpg?text=MENTEE"
+        image_url = p[1] if p and p[1] else None
         profile = {
             "name": u[2],
             "bio": p[0] if p else "",
@@ -172,20 +174,13 @@ def get_me(user=Depends(get_current_user)):
         return {"id": u[0], "email": u[1], "role": u[3], "profile": profile}
 
 # 프로필 수정 (멘토/멘티)
-class UpdateMentorProfileRequest(BaseModel):
+class UpdateProfileRequest(BaseModel):
     id: int
     name: str
     role: str
     bio: str
     image: str  # base64
-    skills: list[str]
-
-class UpdateMenteeProfileRequest(BaseModel):
-    id: int
-    name: str
-    role: str
-    bio: str
-    image: str  # base64
+    skills: Optional[list[str]] = None
 
 from fastapi import UploadFile
 import base64
@@ -193,15 +188,14 @@ import base64
 @app.put("/api/profile")
 def update_profile(
     user=Depends(get_current_user),
-    mentor_data: UpdateMentorProfileRequest = None,
-    mentee_data: UpdateMenteeProfileRequest = None
+    data: UpdateProfileRequest = None,
 ):
     conn = get_db()
     c = conn.cursor()
     image_url = ""
     # 이미지 저장 및 검증 함수
     def save_profile_image(base64_str, role, user_id):
-        if not base64_str:
+        if not base64_str or len(base64_str) == 0:
             return ""
         try:
             img_bytes = base64.b64decode(base64_str)
@@ -222,25 +216,26 @@ def update_profile(
             return f"/api/images/{role}/{user_id}"
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"Invalid image: {e}")
-    if user["role"] == "mentor" and mentor_data:
-        image_url = save_profile_image(mentor_data.image, "mentor", user["user_id"])
-        c.execute("UPDATE users SET name=? WHERE id=?", (mentor_data.name, user["user_id"]))
+    if user["role"] == "mentor" and data:
+        image_url = save_profile_image(data.image, "mentor", user["user_id"])
+        c.execute("UPDATE users SET name=? WHERE id=?", (data.name, user["user_id"]))
         c.execute(
             "UPDATE mentor_profiles SET bio=?, image_url=?, skills=? WHERE user_id=?",
-            (mentor_data.bio, image_url, ",".join(mentor_data.skills), user["user_id"])
+            (data.bio, image_url, ",".join(data.skills), user["user_id"])
         )
         conn.commit()
         return {"result": "ok", "imageUrl": image_url}
-    elif user["role"] == "mentee" and mentee_data:
-        image_url = save_profile_image(mentee_data.image, "mentee", user["user_id"])
-        c.execute("UPDATE users SET name=? WHERE id=?", (mentee_data.name, user["user_id"]))
+    elif user["role"] == "mentee" and data:
+        image_url = save_profile_image(data.image, "mentee", user["user_id"])
+        c.execute("UPDATE users SET name=? WHERE id=?", (data.name, user["user_id"]))
         c.execute(
             "UPDATE mentee_profiles SET bio=?, image_url=? WHERE user_id=?",
-            (mentee_data.bio, image_url, user["user_id"])
+            (data.bio, image_url, user["user_id"])
         )
         conn.commit()
         return {"result": "ok", "imageUrl": image_url}
     else:
+        print(data)
         raise HTTPException(status_code=400, detail="Invalid request")
 
 # 멘토 목록 조회
