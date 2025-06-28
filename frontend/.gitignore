@@ -1,0 +1,6 @@
+# Mentor-Mentee Matching App Frontend
+# Vue 3 + Vite
+node_modules/
+dist/
+.env
+.env.*

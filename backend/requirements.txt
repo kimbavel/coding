@@ -1,0 +1,7 @@
+# Mentor-Mentee Matching App Backend Requirements
+fastapi
+uvicorn
+python-multipart
+PyJWT
+passlib[bcrypt]
+email-validator
