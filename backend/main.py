@@ -13,7 +13,7 @@ import time
 from PIL import Image
 import io
 
-app = FastAPI(openapi_url="/api/openapi.json", docs_url="/api/docs")
+app = FastAPI(openapi_url="/api/openapi.json", docs_url="/")
 
 # CORS 설정 (프론트엔드와 통신 허용)
 app.add_middleware(
