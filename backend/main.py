@@ -23,7 +23,7 @@ app.add_middleware(
 security = HTTPBearer()
 
 # DB 연결 함수
-DB_PATH = "./backend/app.db"
+DB_PATH = "app.db"
 
 def init_db():
     # init_db.py를 import해서 실행

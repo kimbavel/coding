@@ -1,7 +1,7 @@
 # Mentor-Mentee DB Schema (최소한의 구조)
 import sqlite3
 
-conn = sqlite3.connect('./backend/app.db')
+conn = sqlite3.connect('app.db')
 c = conn.cursor()
 
 # 사용자 테이블
