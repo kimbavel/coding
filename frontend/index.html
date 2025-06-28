@@ -4,6 +4,92 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Mentor-Mentee App</title>
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap');
+      body {
+        font-family: 'Inter', Arial, sans-serif;
+        background: linear-gradient(120deg, #fff0f0 0%, #ffe5e5 100%);
+        margin: 0;
+        min-height: 100vh;
+        color: #7b2222;
+      }
+      #app {
+        max-width: 480px;
+        margin: 40px auto;
+        background: #fff8f8;
+        border-radius: 18px;
+        box-shadow: 0 4px 24px rgba(230, 57, 70, 0.08);
+        padding: 32px 24px 24px 24px;
+      }
+      h1, h2, h3 {
+        color: #e63946;
+        font-weight: 600;
+        margin-top: 0;
+      }
+      button, .btn {
+        background: linear-gradient(90deg, #e63946 0%, #ff6b6b 100%);
+        color: #fff;
+        border: none;
+        border-radius: 8px;
+        padding: 10px 20px;
+        font-size: 1rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: background 0.2s;
+        margin-top: 8px;
+        box-shadow: 0 2px 8px rgba(230, 57, 70, 0.10);
+      }
+      button:hover, .btn:hover {
+        background: linear-gradient(90deg, #ff6b6b 0%, #e63946 100%);
+      }
+      input, select, textarea {
+        width: 100%;
+        padding: 10px;
+        margin: 8px 0 16px 0;
+        border: 1px solid #ffb3b3;
+        border-radius: 6px;
+        font-size: 1rem;
+        background: #fff0f0;
+        box-sizing: border-box;
+      }
+      label {
+        font-weight: 500;
+        color: #7b2222;
+      }
+      .card {
+        background: #fff0f0;
+        border-radius: 10px;
+        padding: 18px 16px;
+        margin-bottom: 18px;
+        box-shadow: 0 2px 8px rgba(230, 57, 70, 0.06);
+      }
+      .center {
+        text-align: center;
+      }
+      .error {
+        color: #fff;
+        background: #e63946;
+        border-radius: 6px;
+        padding: 8px 12px;
+        margin-bottom: 12px;
+      }
+      .success {
+        color: #fff;
+        background: #ff6b6b;
+        border-radius: 6px;
+        padding: 8px 12px;
+        margin-bottom: 12px;
+      }
+      a {
+        color: #e63946;
+        text-decoration: none;
+        font-weight: 500;
+      }
+      a:hover {
+        text-decoration: underline;
+        color: #b51727;
+      }
+    </style>
   </head>
   <body>
     <div id="app"></div>
