@@ -8,6 +8,10 @@ from passlib.hash import bcrypt
 import jwt
 import os
 import importlib.util
+import uuid
+import time
+from PIL import Image
+import io
 
 app = FastAPI(openapi_url="/api/openapi.json", docs_url="/api/docs")
 
@@ -110,12 +114,26 @@ class LoginRequest(BaseModel):
 def login(data: LoginRequest = Body(...)):
     conn = get_db()
     c = conn.cursor()
-    c.execute("SELECT id, password, role FROM users WHERE email = ?", (data.email,))
+    c.execute("SELECT id, password, name, email, role FROM users WHERE email = ?", (data.email,))
     user = c.fetchone()
     conn.close()
     if not user or not bcrypt.verify(data.password, user[1]):
         raise HTTPException(status_code=401, detail="Invalid credentials")
-    token = jwt.encode({"user_id": user[0], "role": user[2]}, SECRET_KEY, algorithm="HS256")
+    now = int(time.time())
+    payload = {
+        "iss": "mentor-mentee-app",
+        "sub": str(user[0]),
+        "user_id": user[0],
+        "aud": "mentor-mentee-client",
+        "exp": now + 3600,
+        "nbf": now,
+        "iat": now,
+        "jti": str(uuid.uuid4()),
+        "name": user[2],
+        "email": user[3],
+        "role": user[4]
+    }
+    token = jwt.encode(payload, SECRET_KEY, algorithm="HS256")
     return {"token": token}
 
 # 내 정보 조회
@@ -126,26 +144,31 @@ def get_me(user=Depends(get_current_user)):
     c.execute("SELECT id, email, name, role FROM users WHERE id = ?", (user["user_id"],))
     u = c.fetchone()
     if not u:
+        conn.close()
         raise HTTPException(status_code=404, detail="User not found")
     # 프로필 정보
     if u[3] == "mentor":
         c.execute("SELECT bio, image_url, skills FROM mentor_profiles WHERE user_id = ?", (u[0],))
         p = c.fetchone()
+        image_url = p[1] if p and p[1] else "https://placehold.co/500x500.jpg?text=MENTOR"
         profile = {
             "name": u[2],
             "bio": p[0] if p else "",
-            "imageUrl": p[1] if p else "",
+            "imageUrl": image_url,
             "skills": (p[2].split(",") if p and p[2] else [])
         }
+        conn.close()
         return {"id": u[0], "email": u[1], "role": u[3], "profile": profile}
     else:
         c.execute("SELECT bio, image_url FROM mentee_profiles WHERE user_id = ?", (u[0],))
         p = c.fetchone()
+        image_url = p[1] if p and p[1] else "https://placehold.co/500x500.jpg?text=MENTEE"
         profile = {
             "name": u[2],
             "bio": p[0] if p else "",
-            "imageUrl": p[1] if p else ""
+            "imageUrl": image_url
         }
+        conn.close()
         return {"id": u[0], "email": u[1], "role": u[3], "profile": profile}
 
 # 프로필 수정 (멘토/멘티)
@@ -175,23 +198,48 @@ def update_profile(
 ):
     conn = get_db()
     c = conn.cursor()
+    image_url = ""
+    # 이미지 저장 및 검증 함수
+    def save_profile_image(base64_str, role, user_id):
+        if not base64_str:
+            return ""
+        try:
+            img_bytes = base64.b64decode(base64_str)
+            if len(img_bytes) > 1024*1024:
+                raise HTTPException(status_code=400, detail="Image too large (max 1MB)")
+            img = Image.open(io.BytesIO(img_bytes))
+            if img.format not in ["JPEG", "PNG"]:
+                raise HTTPException(status_code=400, detail="Only jpg/png allowed")
+            w, h = img.size
+            if w != h or w < 500 or w > 1000:
+                raise HTTPException(status_code=400, detail="Image must be square 500~1000px")
+            ext = "jpg" if img.format == "JPEG" else "png"
+            static_dir = os.path.join(os.path.dirname(__file__), "static")
+            os.makedirs(static_dir, exist_ok=True)
+            filename = f"{role}_{user_id}.{ext}"
+            path = os.path.join(static_dir, filename)
+            img.save(path)
+            return f"/api/images/{role}/{user_id}"
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Invalid image: {e}")
     if user["role"] == "mentor" and mentor_data:
-        # 이미지 저장 (여기선 base64를 파일로 저장하지 않고, image_url만 저장)
+        image_url = save_profile_image(mentor_data.image, "mentor", user["user_id"])
         c.execute("UPDATE users SET name=? WHERE id=?", (mentor_data.name, user["user_id"]))
         c.execute(
             "UPDATE mentor_profiles SET bio=?, image_url=?, skills=? WHERE user_id=?",
-            (mentor_data.bio, "", ",".join(mentor_data.skills), user["user_id"])
+            (mentor_data.bio, image_url, ",".join(mentor_data.skills), user["user_id"])
         )
         conn.commit()
-        return {"result": "ok"}
+        return {"result": "ok", "imageUrl": image_url}
     elif user["role"] == "mentee" and mentee_data:
+        image_url = save_profile_image(mentee_data.image, "mentee", user["user_id"])
         c.execute("UPDATE users SET name=? WHERE id=?", (mentee_data.name, user["user_id"]))
         c.execute(
             "UPDATE mentee_profiles SET bio=?, image_url=? WHERE user_id=?",
-            (mentee_data.bio, "", user["user_id"])
+            (mentee_data.bio, image_url, user["user_id"])
         )
         conn.commit()
-        return {"result": "ok"}
+        return {"result": "ok", "imageUrl": image_url}
     else:
         raise HTTPException(status_code=400, detail="Invalid request")
 
@@ -253,7 +301,18 @@ def create_match_request(data: MatchRequestCreate, user=Depends(get_current_user
     # 멘토 존재 확인
     c.execute("SELECT id FROM users WHERE id=? AND role='mentor'", (data.mentorId,))
     if not c.fetchone():
+        conn.close()
         raise HTTPException(status_code=400, detail="Mentor not found")
+    # 한 멘토에게 한 번만 요청 가능
+    c.execute("SELECT id FROM match_requests WHERE mentor_id=? AND mentee_id=? AND status IN ('pending', 'accepted')", (data.mentorId, data.menteeId))
+    if c.fetchone():
+        conn.close()
+        raise HTTPException(status_code=400, detail="Already requested to this mentor")
+    # 멘토가 수락/거절하기 전까지 다른 멘토에게 중복 요청 불가
+    c.execute("SELECT id FROM match_requests WHERE mentee_id=? AND status='pending'", (data.menteeId,))
+    if c.fetchone():
+        conn.close()
+        raise HTTPException(status_code=400, detail="You have a pending request to another mentor")
     c.execute(
         "INSERT INTO match_requests (mentor_id, mentee_id, message, status) VALUES (?, ?, ?, 'pending')",
         (data.mentorId, data.menteeId, data.message)
@@ -300,11 +359,18 @@ def accept_match_request(id: int, user=Depends(get_current_user)):
         raise HTTPException(status_code=401, detail="Only mentor can accept requests")
     conn = get_db()
     c = conn.cursor()
+    # 이미 수락한 요청이 있는지 확인
+    c.execute("SELECT id FROM match_requests WHERE mentor_id=? AND status='accepted'", (user["user_id"],))
+    if c.fetchone():
+        conn.close()
+        raise HTTPException(status_code=400, detail="You have already accepted a mentee. Cancel/delete before accepting another.")
     c.execute("SELECT mentor_id, status FROM match_requests WHERE id=?", (id,))
     row = c.fetchone()
     if not row:
+        conn.close()
         raise HTTPException(status_code=404, detail="Match request not found")
     if row[0] != user["user_id"]:
+        conn.close()
         raise HTTPException(status_code=401, detail="Not your request")
     c.execute("UPDATE match_requests SET status='accepted' WHERE id=?", (id,))
     conn.commit()
@@ -320,8 +386,10 @@ def reject_match_request(id: int, user=Depends(get_current_user)):
     c.execute("SELECT mentor_id, status FROM match_requests WHERE id=?", (id,))
     row = c.fetchone()
     if not row:
+        conn.close()
         raise HTTPException(status_code=404, detail="Match request not found")
     if row[0] != user["user_id"]:
+        conn.close()
         raise HTTPException(status_code=401, detail="Not your request")
     c.execute("UPDATE match_requests SET status='rejected' WHERE id=?", (id,))
     conn.commit()
@@ -348,14 +416,16 @@ def cancel_match_request(id: int, user=Depends(get_current_user)):
 # 프로필 이미지 조회
 @app.get("/api/images/{role}/{id}")
 def get_profile_image(role: str, id: int, user=Depends(get_current_user)):
-    # 실제로는 파일 경로를 DB에 저장하거나, 기본 이미지를 제공
-    # 여기서는 예시로 static 폴더에서 role/id.jpg 또는 id.png를 찾음
     static_dir = os.path.join(os.path.dirname(__file__), "static")
     for ext in ["jpg", "png"]:
         img_path = os.path.join(static_dir, f"{role}_{id}.{ext}")
         if os.path.exists(img_path):
             return FileResponse(img_path, media_type=f"image/{ext}")
-    # 없으면 404
+    # 없으면 역할별 기본 이미지 리다이렉트
+    if role == "mentor":
+        return RedirectResponse("https://placehold.co/500x500.jpg?text=MENTOR")
+    elif role == "mentee":
+        return RedirectResponse("https://placehold.co/500x500.jpg?text=MENTEE")
     raise HTTPException(status_code=404, detail="Image not found")
 
 # TODO: openapi.yaml 기반 엔드포인트 구현
